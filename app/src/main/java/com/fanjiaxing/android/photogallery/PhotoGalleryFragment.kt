@@ -11,13 +11,7 @@ import android.util.Log
 import android.view.*
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
-import android.widget.SearchView
-import android.widget.TextView
-import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
-import androidx.core.content.ContextCompat.getSystemService
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -167,9 +161,25 @@ class PhotoGalleryFragment : VisibleFragment() {
         lifecycle.removeObserver(thumbnailDownloader.fragmentLifecycleObserver)
     }
 
-    private class PhotoHolder(itemImage: ImageView) : RecyclerView.ViewHolder(itemImage) {
+    private inner class PhotoHolder(itemImage: ImageView) : RecyclerView.ViewHolder(itemImage),
+        View.OnClickListener {
 
         val bindDrawable: (Drawable) -> Unit = itemImage::setImageDrawable
+
+        private lateinit var galleryItem: GalleryItem
+
+        init {
+            itemView.setOnClickListener(this)
+        }
+
+        fun bindGalleryItem(item: GalleryItem) {
+            galleryItem = item
+        }
+
+        override fun onClick(v: View?) {
+            val intent = PhotoPageActivity.newIntent(requireContext(), galleryItem.photoPageUri)
+            startActivity(intent)
+        }
 
     }
 
@@ -183,6 +193,7 @@ class PhotoGalleryFragment : VisibleFragment() {
 
         override fun onBindViewHolder(holder: PhotoHolder, position: Int) {
             val galleryItem = galleryItems[position]
+            holder.bindGalleryItem(galleryItem)
             val placeHolder: Drawable =
                 ContextCompat.getDrawable(requireContext(), R.drawable.bill_up_close)
                     ?: ColorDrawable()

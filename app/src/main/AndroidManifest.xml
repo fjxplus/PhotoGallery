@@ -17,6 +17,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PhotoGallery">
+        <activity
+            android:name=".PhotoPageActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".NotificationReceiver"
             android:enabled="true"
