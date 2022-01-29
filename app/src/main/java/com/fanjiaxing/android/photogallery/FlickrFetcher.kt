@@ -11,6 +11,7 @@ import com.fanjiaxing.android.photogallery.model.GalleryItem
 import com.fanjiaxing.android.photogallery.model.PhotoResponse
 import com.fanjiaxing.android.photogallery.network.FlickrApi
 import com.fanjiaxing.android.photogallery.network.ServiceBuilder
+import okhttp3.Request
 import okhttp3.ResponseBody
 import retrofit2.Call
 import retrofit2.Callback
@@ -29,10 +30,36 @@ object FlickrFetcher {
 
     private lateinit var flickrRequest: Call<FlickrResponse>
 
+    fun fetchPhotosRequest(): Call<FlickrResponse>{
+        return flickrApi.fetchPhotos()
+    }
+
     fun fetchPhotos(): LiveData<List<GalleryItem>> {
         Log.i(TAG, "fetchPhotos()")
+        return fetchPhotoMetadata(fetchPhotosRequest())
+    }
+
+    fun searchPhotosRequest(query: String): Call<FlickrResponse>{
+        return flickrApi.searchPhotos(query)
+    }
+
+    fun searchPhotos(query: String): LiveData<List<GalleryItem>>{
+        Log.i(TAG, "searchPhotos()")
+        return fetchPhotoMetadata(searchPhotosRequest(query))
+    }
+
+    @WorkerThread
+    fun fetchPhoto(url: String): Bitmap? {
+        Log.i(TAG, "fetchPhoto()")
+        val response: Response<ResponseBody> = flickrApi.fetchUrlBytes(url).execute()
+        val bitmap = response.body()?.byteStream()?.use ( BitmapFactory::decodeStream )
+        Log.i(TAG, "Decode bitmap = $bitmap from Response = $response")
+        return bitmap
+    }
+
+    private fun fetchPhotoMetadata(flickrRequest: Call<FlickrResponse>): LiveData<List<GalleryItem>>{
+
         val responseLiveData: MutableLiveData<List<GalleryItem>> = MutableLiveData()
-        flickrRequest = flickrApi.fetchPhotos()
         flickrRequest.enqueue(object : Callback<FlickrResponse> {
             override fun onResponse(
                 call: Call<FlickrResponse>,
@@ -58,15 +85,6 @@ object FlickrFetcher {
 
         })
         return responseLiveData
-    }
-
-    @WorkerThread
-    fun fetchPhoto(url: String): Bitmap? {
-        Log.i(TAG, "fetchPhoto()")
-        val response: Response<ResponseBody> = flickrApi.fetchUrlBytes(url).execute()
-        val bitmap = response.body()?.byteStream()?.use ( BitmapFactory::decodeStream )
-        Log.i(TAG, "Decode bitmap = $bitmap from Response = $response")
-        return bitmap
     }
 
     fun cancelRequestInFlight() {

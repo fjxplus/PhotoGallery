@@ -1,5 +1,6 @@
 package com.fanjiaxing.android.photogallery
 
+import android.content.Context
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -7,25 +8,31 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
+import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
+import android.widget.SearchView
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.getSystemService
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.work.*
 import com.fanjiaxing.android.photogallery.databinding.FragmentPhotoGalleryBinding
 import com.fanjiaxing.android.photogallery.model.GalleryItem
+import com.fanjiaxing.android.photogallery.network.PollWorker
 import com.fanjiaxing.android.photogallery.network.ThumbnailDownloader
 import com.fanjiaxing.android.photogallery.ui.PhotoGalleryFragmentViewModel
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "ThumbnailDownloader"
+private const val POLL_WORK = "POLL_WORK"
 
-class PhotoGalleryFragment : Fragment() {
+class PhotoGalleryFragment : VisibleFragment() {
 
     private var _binding: FragmentPhotoGalleryBinding? = null
 
@@ -43,12 +50,14 @@ class PhotoGalleryFragment : Fragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setHasOptionsMenu(true)
         val responseHandler = Handler(Looper.getMainLooper())
         thumbnailDownloader = ThumbnailDownloader(responseHandler) { photoHolder, bitmap ->
             val drawable = BitmapDrawable(resources, bitmap)
             photoHolder.bindDrawable(drawable)
         }
         lifecycle.addObserver(thumbnailDownloader.fragmentLifecycleObserver)
+
     }
 
     override fun onCreateView(
@@ -62,11 +71,89 @@ class PhotoGalleryFragment : Fragment() {
         return binding.root
     }
 
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        super.onCreateOptionsMenu(menu, inflater)
+        inflater.inflate(R.menu.fragment_pohot_gallery, menu)
+
+        val searchItem: MenuItem = menu.findItem(R.id.menu_item_search)
+        val searchView = searchItem.actionView as androidx.appcompat.widget.SearchView
+
+        searchView.apply {
+            setOnQueryTextListener(object :
+                androidx.appcompat.widget.SearchView.OnQueryTextListener {
+                override fun onQueryTextSubmit(query: String?): Boolean {
+                    Log.d(TAG, "QueryTextSubmit: $query")
+                    query?.apply {
+                        viewModel.fetchPhotos(query)
+                    }
+                    val manager = context.getSystemService(Context.INPUT_METHOD_SERVICE)
+                            as InputMethodManager
+                    manager.hideSoftInputFromWindow(
+                        searchView.windowToken,
+                        InputMethodManager.HIDE_NOT_ALWAYS
+                    )
+
+                    return true
+                }
+
+                override fun onQueryTextChange(newText: String?): Boolean {
+                    Log.d(TAG, "QueryTextChanged: $$newText")
+                    return false
+                }
+            })
+
+            setOnSearchClickListener {
+                searchView.setQuery(viewModel.searchTerm, false)
+            }
+        }
+
+        val toggleItem = menu.findItem(R.id.menu_item_toggle_polling)
+        val isPolling = QueryPreference.isPolling(requireContext())
+        val toggleTitle = if (isPolling) {
+            R.string.stop_polling
+        } else {
+            R.string.start_polling
+        }
+        toggleItem.setTitle(toggleTitle)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.menu_item_clear -> {
+                viewModel.fetchPhotos("")
+                true
+            }
+            R.id.menu_item_toggle_polling -> {
+                val isPolling = QueryPreference.isPolling(requireContext())
+                if (isPolling) {
+                    WorkManager.getInstance().cancelUniqueWork(POLL_WORK)
+                    QueryPreference.setPolling(requireContext(), false)
+                } else {
+                    val constraints =
+                        Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
+                    val periodRequest = PeriodicWorkRequest
+                        .Builder(PollWorker::class.java, 15, TimeUnit.MINUTES)
+                        .setConstraints(constraints)
+                        .build()
+                    WorkManager.getInstance().enqueueUniquePeriodicWork(
+                        POLL_WORK,
+                        ExistingPeriodicWorkPolicy.KEEP,
+                        periodRequest
+                    )
+                    QueryPreference.setPolling(requireContext(), true)
+                }
+                activity?.invalidateOptionsMenu()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        viewModel.galleryItemLiveData.observe(viewLifecycleOwner, { galleryItems ->
+        viewModel.galleryItemLiveData.observe(viewLifecycleOwner) { galleryItems ->
             binding.photoRecyclerView.adapter = PhotoAdapter(galleryItems)
-        })
+        }
     }
 
     override fun onDestroyView() {
@@ -83,6 +170,7 @@ class PhotoGalleryFragment : Fragment() {
     private class PhotoHolder(itemImage: ImageView) : RecyclerView.ViewHolder(itemImage) {
 
         val bindDrawable: (Drawable) -> Unit = itemImage::setImageDrawable
+
     }
 
     private inner class PhotoAdapter(private val galleryItems: List<GalleryItem>) :

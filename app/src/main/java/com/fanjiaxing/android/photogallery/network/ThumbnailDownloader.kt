@@ -72,6 +72,9 @@ class ThumbnailDownloader<in T>(
         return super.quit()
     }
 
+    /**
+     * onBindViewHolder()传入viewHolder和待下载的url，生成Message，发向指定的Handler
+     */
     fun queueThumbnail(target: T, url: String) {
         Log.i(TAG, "Got a url: $url")
         requestMap[target] = url
